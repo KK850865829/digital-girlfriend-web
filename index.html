@@ -424,21 +424,32 @@ async function sendText(text) {
 function ttsSpeak(text) {
   const cleanText = text.replace(/（[^）]*）/g, '');
   if (!cleanText.trim()) { setState('idle'); return; }
-  if ('speechSynthesis' in window) {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(cleanText);
-    u.lang = 'zh-CN'; u.rate = 1.0; u.pitch = 1.35;
-    const voices = speechSynthesis.getVoices();
-    const zhVoice = voices.find(v => v.lang.includes('zh') && (v.name.includes('Xiaoxiao') || v.name.includes('Xiaoyi')))
-                 || voices.find(v => v.lang.includes('zh-CN') && !v.localService)
-                 || voices.find(v => v.lang.includes('zh-CN'))
-                 || voices.find(v => v.lang.includes('zh'));
-    if (zhVoice) u.voice = zhVoice;
-    u.onstart = () => setState('speaking');
-    u.onend = () => setState('idle');
-    u.onerror = () => setState('idle');
-    speechSynthesis.speak(u);
-  } else { setTimeout(() => setState('idle'), 2000); }
+
+  // Primary: Google Translate TTS (works in WeChat/X5 browser)
+  const ttsUrl = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=zh-CN&q=' + encodeURIComponent(cleanText);
+  const audio = new Audio(ttsUrl);
+  audio.onplay = () => setState('speaking');
+  audio.onended = () => setState('idle');
+  audio.onerror = () => {
+    // Fallback: browser SpeechSynthesis (works on desktop/Chrome)
+    if ('speechSynthesis' in window) {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(cleanText);
+      u.lang = 'zh-CN'; u.rate = 1.0; u.pitch = 1.35;
+      const voices = speechSynthesis.getVoices();
+      const zhVoice = voices.find(v => v.lang.includes('zh') && (v.name.includes('Xiaoxiao') || v.name.includes('Xiaoyi')))
+                   || voices.find(v => v.lang.includes('zh-CN') && !v.localService)
+                   || voices.find(v => v.lang.includes('zh-CN'))
+                   || voices.find(v => v.lang.includes('zh'));
+      if (zhVoice) u.voice = zhVoice;
+      u.onstart = () => setState('speaking');
+      u.onend = () => setState('idle');
+      u.onerror = () => setState('idle');
+      speechSynthesis.speak(u);
+    } else { setTimeout(() => setState('idle'), 2000); }
+  };
+  const playPromise = audio.play();
+  if (playPromise) playPromise.catch(() => { audio.onerror(); });
 }
 
 const replies = {
