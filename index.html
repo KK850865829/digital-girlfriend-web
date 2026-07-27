@@ -279,7 +279,14 @@ function tryConnect() {
   for (let url of protocols) {
     try {
       ws = new WebSocket(url);
-      ws.onopen = () => { setMode('online', 'AI在线'); ws.send(JSON.stringify({type:'ping'})); };
+      // Timeout after 3 seconds
+      const timeout = setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+          ws.close();
+          ws = null;
+        }
+      }, 3000);
+      ws.onopen = () => { clearTimeout(timeout); setMode('online', 'AI在线'); ws.send(JSON.stringify({type:'ping'})); };
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
         if (data.type === 'pong') return;
@@ -430,7 +437,6 @@ function ttsSpeak(text) {
   // Primary: Google Translate TTS (works in WeChat/X5 browser)
   const ttsUrl = 'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=zh-CN&q=' + encodeURIComponent(cleanText);
   const audio = new Audio(ttsUrl);
-  audio.crossOrigin = 'anonymous';
   
   let hasStarted = false;
   audio.onplay = () => { 
@@ -538,19 +544,31 @@ stopBtn.addEventListener('click', () => {
 
 // ── Text input bar for mobile/WeChat ──
 const inputBar = document.createElement('div');
-inputBar.style.cssText = 'position:fixed;bottom:50px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:8px;align-items:center;';
+inputBar.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:100;display:flex;gap:8px;align-items:center;padding:8px 16px;background:rgba(20,20,30,.85);border-radius:25px;border:1px solid rgba(180,140,255,.2);backdrop-filter:blur(10px);box-shadow:0 4px 20px rgba(0,0,0,.3);';
 const textInput = document.createElement('input');
 textInput.type = 'text';
 textInput.placeholder = '输入消息...';
-textInput.style.cssText = 'width:240px;padding:10px 16px;border-radius:20px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:#fff;font-size:14px;outline:none;';
+textInput.style.cssText = 'width:220px;padding:10px 16px;border-radius:20px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:#fff;font-size:14px;outline:none;';
+textInput.addEventListener('focus', () => { textInput.style.borderColor = 'rgba(180,140,255,.4)'; });
+textInput.addEventListener('blur', () => { textInput.style.borderColor = 'rgba(255,255,255,.1)'; });
 const sendBtnEl = document.createElement('button');
 sendBtnEl.textContent = '发送';
-sendBtnEl.style.cssText = 'padding:10px 20px;border-radius:20px;border:1px solid rgba(180,140,255,.3);background:rgba(180,140,255,.15);color:rgba(220,200,255,.9);font-size:14px;cursor:pointer;';
+sendBtnEl.style.cssText = 'padding:10px 20px;border-radius:20px;border:1px solid rgba(180,140,255,.4);background:rgba(180,140,255,.2);color:rgba(220,200,255,.95);font-size:14px;cursor:pointer;transition:all .2s;';
+sendBtnEl.onmouseenter = () => { sendBtnEl.style.background = 'rgba(180,140,255,.35)'; };
+sendBtnEl.onmouseleave = () => { sendBtnEl.style.background = 'rgba(180,140,255,.2)'; };
 sendBtnEl.onclick = () => { if (textInput.value.trim()) { sendText(textInput.value.trim()); textInput.value = ''; } };
 textInput.onkeydown = (e) => { if (e.key === 'Enter' && textInput.value.trim()) { sendText(textInput.value.trim()); textInput.value = ''; } };
 inputBar.appendChild(textInput);
 inputBar.appendChild(sendBtnEl);
 document.body.appendChild(inputBar);
+
+// ── Welcome message ──
+setTimeout(() => {
+  const welcomeText = '（抬头看到你，眼睛亮亮的）你来啦~在忙什么呢？';
+  addChatBubble('ai', welcomeText);
+  showSubtitle(welcomeText);
+  ttsSpeak(welcomeText);
+}, 500);
 
 // ── Start ──
 tryConnect();
