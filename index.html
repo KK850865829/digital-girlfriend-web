@@ -116,6 +116,36 @@ body{font-family:'PingFang SC','Microsoft YaHei','Segoe UI',sans-serif;backgroun
 .mode-dot{width:6px;height:6px;border-radius:50%;background:#4ade80;box-shadow:0 0 6px #4ade80}
 .mode-dot.off{background:#666;box-shadow:none}
 
+/* ── Mood Visual Effects ── */
+.bg-happy{background:linear-gradient(135deg,#0a0a0c 0%,#1a1510 50%,#0a0a0c 100%)!important}
+.bg-happy::after{background:linear-gradient(to left,rgba(255,200,50,.25),transparent)!important}
+.bg-sad{background:linear-gradient(135deg,#0a0a0c 0%,#0a0f1a 50%,#0a0a0c 100%)!important}
+.bg-sad::after{background:linear-gradient(to left,rgba(50,80,150,.2),transparent)!important}
+.bg-love{background:linear-gradient(135deg,#0a0a0c 0%,#1a0a15 50%,#0a0a0c 100%)!important}
+.bg-love::after{background:linear-gradient(to left,rgba(255,100,150,.25),transparent)!important}
+.bg-tired{background:linear-gradient(135deg,#0a0a0c 0%,#0f0f15 50%,#0a0a0c 100%)!important}
+.bg-tired::after{background:linear-gradient(to left,rgba(100,100,150,.15),transparent)!important}
+.bg-bored{background:linear-gradient(135deg,#0a0a0c 0%,#101015 50%,#0a0a0c 100%)!important}
+.bg-bored::after{background:linear-gradient(to left,rgba(120,120,140,.15),transparent)!important}
+
+.mood-happy .girl-img{filter:brightness(.95) contrast(1.08) saturate(1.15)!important}
+.mood-sad .girl-img{filter:brightness(.85) contrast(1.0) saturate(.85)!important}
+.mood-love .girl-img{filter:brightness(.95) contrast(1.05) saturate(1.1)!important}
+.mood-tired .girl-img{filter:brightness(.80) contrast(.95) saturate(.9)!important}
+.mood-bored .girl-img{filter:brightness(.85) contrast(1.0) saturate(.95)!important}
+
+.mood-happy{animation:moodHappyPulse 3s ease-in-out infinite!important}
+.mood-sad{animation:moodSadSway 5s ease-in-out infinite!important}
+.mood-love{animation:moodLoveFloat 4s ease-in-out infinite!important}
+.mood-tired{animation:moodTiredSway 6s ease-in-out infinite!important}
+.mood-bored{animation:moodBoredTilt 5s ease-in-out infinite!important}
+
+@keyframes moodHappyPulse{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-4px) scale(1.01)}}
+@keyframes moodSadSway{0%,100%{transform:translateX(0) translateY(0)}50%{transform:translateX(-2px) translateY(2px)}}
+@keyframes moodLoveFloat{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-3px) rotate(.5deg)}}
+@keyframes moodTiredSway{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+@keyframes moodBoredTilt{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-.5deg)}}
+
 /* ── Responsive ── */
 @media(max-width:768px){
   .girl-wrap{width:100%;opacity:.6}
@@ -296,6 +326,7 @@ function tryConnect() {
           addChatBubble('user', data.user_text || '');
           addChatBubble('ai', data.text);
           showSubtitle(data.text);
+          if (data.mood) showMoodEffect(data.mood);
           if (data.audio_url) playAudio(data.audio_url, data.video_url);
           setState('idle');
         }
@@ -414,6 +445,43 @@ function initSpeechRecognition() {
   return rec;
 }
 
+// ── Mood-based visual effects ──
+function showMoodEffect(mood) {
+  const girlWrap = document.getElementById('girlWrap');
+  const bg = document.querySelector('.bg');
+  
+  // Remove previous mood classes
+  girlWrap.classList.remove('mood-happy', 'mood-sad', 'mood-love', 'mood-tired', 'mood-bored');
+  bg.classList.remove('bg-happy', 'bg-sad', 'bg-love', 'bg-tired', 'bg-bored');
+  
+  // Add new mood class
+  if (mood && mood !== 'neutral' && mood !== 'default') {
+    girlWrap.classList.add('mood-' + mood);
+    bg.classList.add('bg-' + mood);
+    
+    // Auto-remove after 8 seconds
+    setTimeout(() => {
+      girlWrap.classList.remove('mood-' + mood);
+      bg.classList.remove('bg-' + mood);
+    }, 8000);
+  }
+}
+
+// ── Client-side mood detection (for cloud mode without backend) ──
+function detectMood(text) {
+  const patterns = [
+    ['happy', /开心|高兴|兴奋|太好了|哈哈|嘻嘻|好棒|不错|快乐|幸福|耶|赞|好玩|甜|可爱/],
+    ['sad', /难过|伤心|哭|郁闷|烦|生气|愤怒|委屈|不开心|失落|焦虑|担心|害怕|沮丧|心疼/],
+    ['love', /想你|爱你|喜欢|亲亲|抱抱|宝贝|亲爱的|老婆|么么|啾|甜蜜|心动|思念/],
+    ['tired', /累|疲|困|倦|辛苦|加班|熬夜|好烦|好累|不想|崩溃|受不了|压力|疲惫|腰酸|头疼/],
+    ['bored', /无聊|没意思|没事干|好闷|闲|发呆|没劲|无所谓/],
+  ];
+  for (const [mood, pattern] of patterns) {
+    if (pattern.test(text)) return mood;
+  }
+  return 'neutral';
+}
+
 async function sendText(text) {
   if (!text.trim()) return;
   addChatBubble('user', text);
@@ -425,6 +493,9 @@ async function sendText(text) {
   showTyping(false);
   addChatBubble('ai', reply);
   showSubtitle(reply);
+  // Detect mood from reply and show visual effect
+  const mood = detectMood(reply);
+  showMoodEffect(mood);
   ttsSpeak(reply);
 }
 
