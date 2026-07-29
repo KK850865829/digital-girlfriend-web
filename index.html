@@ -279,6 +279,7 @@ async function callDeepSeek(userText) {
 
 // ── State ──
 let state = 'idle';
+let isAISpeaking = false; // Flag to prevent echo feedback loop
 let ws = null;
 let recognition = null;
 let audioEl = null;
@@ -411,10 +412,10 @@ function playAudio(url, videoUrl) {
   if (videoUrl) { hasVideo = true; girlVid.src = videoUrl; girlVid.load(); }
   else hasVideo = false;
   audioEl = new Audio(url);
-  audioEl.onplay = () => { setState('speaking'); if (hasVideo) { girlVid.currentTime = 0; girlVid.play().catch(() => {}); } };
-  audioEl.onended = () => { setState('idle'); stopVideo(); audioEl = null; };
-  audioEl.onerror = () => { setState('idle'); stopVideo(); audioEl = null; };
-  audioEl.play().catch(() => { setState('idle'); stopVideo(); });
+  audioEl.onplay = () => { isAISpeaking = true; setState('speaking'); if (hasVideo) { girlVid.currentTime = 0; girlVid.play().catch(() => {}); } };
+  audioEl.onended = () => { isAISpeaking = false; setState('idle'); stopVideo(); audioEl = null; };
+  audioEl.onerror = () => { isAISpeaking = false; setState('idle'); stopVideo(); audioEl = null; };
+  audioEl.play().catch(() => { isAISpeaking = false; setState('idle'); stopVideo(); });
 }
 
 function stopVideo() { hasVideo = false; girlVid.pause(); girlVid.removeAttribute('src'); girlVid.load(); }
@@ -429,6 +430,11 @@ function initSpeechRecognition() {
   let silenceTimer = null;
   rec.onstart = () => setState('listening');
   rec.onresult = (e) => {
+    // Ignore results when AI is speaking to prevent echo feedback
+    if (isAISpeaking) {
+      console.log('[SR] Ignoring result - AI is speaking');
+      return;
+    }
     let final = '', interim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       if (e.results[i].isFinal) final += e.results[i][0].transcript;
@@ -512,14 +518,17 @@ function ttsSpeak(text) {
   let hasStarted = false;
   audio.onplay = () => { 
     hasStarted = true;
+    isAISpeaking = true; // Set flag to prevent echo feedback
     console.log('[TTS] Google TTS playing');
     setState('speaking'); 
   };
   audio.onended = () => { 
+    isAISpeaking = false; // Clear flag when done
     console.log('[TTS] Google TTS ended');
     setState('idle'); 
   };
   audio.onerror = (e) => { 
+    isAISpeaking = false; // Clear flag on error
     console.log('[TTS] Google TTS error, trying fallback', e);
     fallbackTTS(cleanText);
   };
@@ -553,9 +562,9 @@ function fallbackTTS(text) {
                  || voices.find(v => v.lang.includes('zh-CN'))
                  || voices.find(v => v.lang.includes('zh'));
     if (zhVoice) u.voice = zhVoice;
-    u.onstart = () => setState('speaking');
-    u.onend = () => setState('idle');
-    u.onerror = () => setState('idle');
+    u.onstart = () => { isAISpeaking = true; setState('speaking'); };
+    u.onend = () => { isAISpeaking = false; setState('idle'); };
+    u.onerror = () => { isAISpeaking = false; setState('idle'); };
     speechSynthesis.speak(u);
   } else { 
     console.log('[TTS] No TTS available');
@@ -598,7 +607,7 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ── Event Listeners ──
 wfCircle.addEventListener('click', () => {
-  if (state === 'speaking') { if (audioEl) { audioEl.pause(); audioEl = null; } speechSynthesis.cancel(); stopVideo(); setState('idle'); return; }
+  if (state === 'speaking') { if (audioEl) { audioEl.pause(); audioEl = null; } speechSynthesis.cancel(); stopVideo(); isAISpeaking = false; setState('idle'); return; }
   if (state === 'listening') { if (recognition) { try { recognition.stop(); } catch(e){} } setState('idle'); return; }
   recognition = initSpeechRecognition();
   if (recognition) { try { recognition.start(); } catch(e) {} }
@@ -610,7 +619,7 @@ micBtn.addEventListener('click', () => wfCircle.click());
 stopBtn.addEventListener('click', () => {
   if (recognition) { try { recognition.stop(); } catch(e){} }
   if (audioEl) { audioEl.pause(); audioEl = null; }
-  speechSynthesis.cancel(); stopVideo(); setState('idle'); showTyping(false); subtitleText.textContent = '';
+  speechSynthesis.cancel(); stopVideo(); isAISpeaking = false; setState('idle'); showTyping(false); subtitleText.textContent = '';
 });
 
 // ── Text input bar for mobile/WeChat ──
