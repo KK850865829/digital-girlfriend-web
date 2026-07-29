@@ -280,6 +280,7 @@ async function callDeepSeek(userText) {
 // ── State ──
 let state = 'idle';
 let isAISpeaking = false; // Flag to prevent echo feedback loop
+let voiceInputEnabled = false; // Track if user wants voice input mode
 let ws = null;
 let recognition = null;
 let audioEl = null;
@@ -412,10 +413,43 @@ function playAudio(url, videoUrl) {
   if (videoUrl) { hasVideo = true; girlVid.src = videoUrl; girlVid.load(); }
   else hasVideo = false;
   audioEl = new Audio(url);
-  audioEl.onplay = () => { isAISpeaking = true; setState('speaking'); if (hasVideo) { girlVid.currentTime = 0; girlVid.play().catch(() => {}); } };
-  audioEl.onended = () => { isAISpeaking = false; setState('idle'); stopVideo(); audioEl = null; };
-  audioEl.onerror = () => { isAISpeaking = false; setState('idle'); stopVideo(); audioEl = null; };
-  audioEl.play().catch(() => { isAISpeaking = false; setState('idle'); stopVideo(); });
+  audioEl.onplay = () => { 
+    isAISpeaking = true; 
+    // Completely stop speech recognition to prevent echo
+    if (recognition) { try { recognition.stop(); } catch(e){} }
+    setState('speaking'); 
+    if (hasVideo) { girlVid.currentTime = 0; girlVid.play().catch(() => {}); } 
+  };
+  audioEl.onended = () => { 
+    isAISpeaking = false; 
+    setState('idle'); 
+    stopVideo(); 
+    audioEl = null;
+    // Restart speech recognition if user was in voice input mode
+    if (voiceInputEnabled) {
+      setTimeout(() => {
+        recognition = initSpeechRecognition();
+        if (recognition) { try { recognition.start(); } catch(e) {} }
+      }, 500);
+    }
+  };
+  audioEl.onerror = () => { 
+    isAISpeaking = false; 
+    setState('idle'); 
+    stopVideo(); 
+    audioEl = null;
+    if (voiceInputEnabled) {
+      setTimeout(() => {
+        recognition = initSpeechRecognition();
+        if (recognition) { try { recognition.start(); } catch(e) {} }
+      }, 500);
+    }
+  };
+  audioEl.play().catch(() => { 
+    isAISpeaking = false; 
+    setState('idle'); 
+    stopVideo(); 
+  });
 }
 
 function stopVideo() { hasVideo = false; girlVid.pause(); girlVid.removeAttribute('src'); girlVid.load(); }
@@ -519,13 +553,22 @@ function ttsSpeak(text) {
   audio.onplay = () => { 
     hasStarted = true;
     isAISpeaking = true; // Set flag to prevent echo feedback
+    // Completely stop speech recognition to prevent echo
+    if (recognition) { try { recognition.stop(); } catch(e){} }
     console.log('[TTS] Google TTS playing');
     setState('speaking'); 
   };
   audio.onended = () => { 
     isAISpeaking = false; // Clear flag when done
     console.log('[TTS] Google TTS ended');
-    setState('idle'); 
+    setState('idle');
+    // Restart speech recognition if user was in voice input mode
+    if (voiceInputEnabled) {
+      setTimeout(() => {
+        recognition = initSpeechRecognition();
+        if (recognition) { try { recognition.start(); } catch(e) {} }
+      }, 500);
+    }
   };
   audio.onerror = (e) => { 
     isAISpeaking = false; // Clear flag on error
@@ -562,9 +605,33 @@ function fallbackTTS(text) {
                  || voices.find(v => v.lang.includes('zh-CN'))
                  || voices.find(v => v.lang.includes('zh'));
     if (zhVoice) u.voice = zhVoice;
-    u.onstart = () => { isAISpeaking = true; setState('speaking'); };
-    u.onend = () => { isAISpeaking = false; setState('idle'); };
-    u.onerror = () => { isAISpeaking = false; setState('idle'); };
+    u.onstart = () => { 
+      isAISpeaking = true; 
+      // Completely stop speech recognition to prevent echo
+      if (recognition) { try { recognition.stop(); } catch(e){} }
+      setState('speaking'); 
+    };
+    u.onend = () => { 
+      isAISpeaking = false; 
+      setState('idle');
+      // Restart speech recognition if user was in voice input mode
+      if (voiceInputEnabled) {
+        setTimeout(() => {
+          recognition = initSpeechRecognition();
+          if (recognition) { try { recognition.start(); } catch(e) {} }
+        }, 500);
+      }
+    };
+    u.onerror = () => { 
+      isAISpeaking = false; 
+      setState('idle');
+      if (voiceInputEnabled) {
+        setTimeout(() => {
+          recognition = initSpeechRecognition();
+          if (recognition) { try { recognition.start(); } catch(e) {} }
+        }, 500);
+      }
+    };
     speechSynthesis.speak(u);
   } else { 
     console.log('[TTS] No TTS available');
@@ -608,7 +675,8 @@ function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 // ── Event Listeners ──
 wfCircle.addEventListener('click', () => {
   if (state === 'speaking') { if (audioEl) { audioEl.pause(); audioEl = null; } speechSynthesis.cancel(); stopVideo(); isAISpeaking = false; setState('idle'); return; }
-  if (state === 'listening') { if (recognition) { try { recognition.stop(); } catch(e){} } setState('idle'); return; }
+  if (state === 'listening') { if (recognition) { try { recognition.stop(); } catch(e){} } voiceInputEnabled = false; setState('idle'); return; }
+  voiceInputEnabled = true; // User wants voice input mode
   recognition = initSpeechRecognition();
   if (recognition) { try { recognition.start(); } catch(e) {} }
   else { const input = prompt('输入你想说的话：'); if (input) sendText(input); }
@@ -618,6 +686,7 @@ micBtn.addEventListener('click', () => wfCircle.click());
 
 stopBtn.addEventListener('click', () => {
   if (recognition) { try { recognition.stop(); } catch(e){} }
+  voiceInputEnabled = false;
   if (audioEl) { audioEl.pause(); audioEl = null; }
   speechSynthesis.cancel(); stopVideo(); isAISpeaking = false; setState('idle'); showTyping(false); subtitleText.textContent = '';
 });
